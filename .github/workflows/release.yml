@@ -1,0 +1,110 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      # ---------- Backend ----------
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      # ---------- Frontend ----------
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      # ---------- Package（仅 tag 触发） ----------
+      - name: Assemble release directory
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -e
+          RELEASE_DIR=release
+          mkdir -p "$RELEASE_DIR/backend" "$RELEASE_DIR/public"
+
+          # backend：编译产物 + 运行所需清单 + 环境模板
+          cp -r backend/dist                "$RELEASE_DIR/backend/dist"
+          cp    backend/package.json        "$RELEASE_DIR/backend/package.json"
+          cp    backend/package-lock.json   "$RELEASE_DIR/backend/package-lock.json"
+          cp    backend/.env.example        "$RELEASE_DIR/backend/.env.example"
+
+          # frontend：静态资源（Nginx 直接吃）
+          cp -r frontend/dist/. "$RELEASE_DIR/public/"
+
+          # 部署辅助文件
+          [ -f deploy/nginx.example.conf ] && cp deploy/nginx.example.conf "$RELEASE_DIR/" || true
+          [ -f README.md ]   && cp README.md   "$RELEASE_DIR/" || true
+          [ -f LICENSE ]     && cp LICENSE     "$RELEASE_DIR/" || true
+
+          # 打包
+          TAG=${GITHUB_REF_NAME}
+          tar -czf "releasehub-${TAG}.tar.gz" -C . release
+          (cd release && zip -qr "../releasehub-${TAG}.zip" .)
+          ls -lah releasehub-*
+
+      - name: Upload build artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: releasehub-${{ github.ref_name }}
+          path: |
+            releasehub-*.tar.gz
+            releasehub-*.zip
+          retention-days: 14
+
+      # ---------- 发布 GitHub Release（仅 tag） ----------
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: |
+            ${{ github.event.head_commit.message }}
+
+            ---
+            ### 📦 部署速记
+            ```bash
+            tar xzf releasehub-${{ github.ref_name }}.tar.gz
+            cd release/backend
+            cp .env.example .env && vim .env   # 改 SESSION_SECRET
+            npm ci --omit=dev
+            node dist/src/index.js
+            ```
+            将 `release/public/` 配为 Nginx `root`，`release/backend/` 部署为后端服务即可。
+          files: |
+            releasehub-${{ github.ref_name }}.tar.gz
+            releasehub-${{ github.ref_name }}.zip
+          draft: false
+          prerelease: false

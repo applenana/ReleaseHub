@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 .env.local
+.env.*.local
 *.log
 .DS_Store
 data/
@@ -12,3 +13,16 @@ backend/dist/
 frontend/dist/
 .vscode/
 .idea/
+
+# TS 增量编译缓存
+*.tsbuildinfo
+
+# 构建产物 / 打包临时
+release/
+*.zip
+*.tar.gz
+*.tgz
+
+# 系统/编辑器
+Thumbs.db
+*.swp
