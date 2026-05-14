@@ -76,52 +76,55 @@ npm run dev                # 监听 http://localhost:5173
 
 ## 🚢 生产部署
 
-### 第一步：拿到构建产物
+### 一键安装（推荐）
 
-**方式 A（推荐，零编译）**：从 [Releases](../../releases) 页下载 `releasehub-vX.Y.Z.tar.gz` 解压即用。
+从 [Releases](../../releases) 页下载 `releasehub-vX.Y.Z.tar.gz`：
 
-包内已含：
-- `release/backend/dist/` — 编译后的 JS
-- `release/backend/node_modules/` — **生产依赖已装好（含 better-sqlite3、argon2 原生二进制）**
-- `release/backend/.env.example`
-- `release/public/` — 前端静态资源
+```bash
+tar xzf releasehub-vX.Y.Z.tar.gz
+cd release
+chmod +x install.sh
 
-> ⚠️ 运行环境要求：**Linux x64 + Node 24.x**（与 GitHub Actions 构建环境一致）。
-> 若架构/glibc 不兼容，请改用方式 B 自行编译。
+# 三选一
+./install.sh              # 装依赖 + 生成 .env（手动启动）
+./install.sh --systemd    # 装依赖 + 写入 systemd 服务并 enable（需 sudo）
+./install.sh --pm2        # 装依赖 + 用 pm2 启动
+```
 
-**方式 B（源码自构建）**：
+`install.sh` 做的事：
+1. 检查 Node 版本（要求 ≥ 20，推荐 24.x）
+2. 在 `backend/` 跑 `npm ci --omit=dev` —— 原生模块（`better-sqlite3`、`argon2`）在目标机器现编，跨发行版/glibc/架构无障碍
+3. 复制 `.env.example` → `.env`，自动写入 `openssl rand -hex 32` 生成的 `SESSION_SECRET`
+
+> 服务器需预先安装：`node`（≥ 20）、`npm`、`gcc`/`make`/`python3`（编译原生模块）。
+> 想从源码自构建，见下方"方式 B"。
+
+### 包内结构
+
+```
+release/
+├── install.sh                ← 一键脚本
+├── nginx.example.conf        ← Nginx 配置范例
+├── backend/
+│   ├── dist/                 ← 编译后的 JS（已带）
+│   ├── package.json          ← 已带
+│   ├── package-lock.json     ← 已带
+│   ├── .env.example          ← 已带；install.sh 会生成 .env
+│   ├── node_modules/         ← install.sh 现场装
+│   ├── data/                 ← 首次启动自动建（SQLite）
+│   └── storage/              ← 首次启动自动建（固件文件）
+└── public/                   ← Nginx 静态根（assets/ + index.html）
+```
+
+### 方式 B：源码自构建
+
 ```bash
 cd backend && npm ci && npm run build && npm prune --omit=dev
 cd ../frontend && npm ci && npm run build
+# 然后把 backend/{dist,package.json,package-lock.json,.env.example} 与 frontend/dist/* 部署到服务器
 ```
 
-### 第二步：服务器目录结构
-
-```
-/www/wwwroot/releaseHub/
-├── backend/
-│   ├── dist/                 ← 解压自带
-│   ├── node_modules/         ← 解压自带（方式 A 无需 npm ci）
-│   ├── package.json          ← 解压自带
-│   ├── package-lock.json     ← 解压自带
-│   ├── .env                  ← 从 .env.example 改（必做）
-│   ├── data/                 ← 首次启动自动建（SQLite 数据库）
-│   └── storage/              ← 首次启动自动建（固件文件）
-└── public/                   ← Nginx 静态根，对应 release/public/ 的内容
-```
-
-### 第三步：（方式 B 才需要）装运行依赖
-
-服务器需要：**Node.js 24.x**、`gcc`/`make`/`python3`（编译 `better-sqlite3` / `argon2` 原生模块）。
-
-```bash
-cd /www/wwwroot/releaseHub/backend
-npm ci --omit=dev
-```
-
-> 方式 A 跳过本步。
-
-### 第四步：配 `.env`
+### 配 `.env`（install.sh 已自动生成基础版，可按需微调）
 
 ```bash
 cp .env.example .env
@@ -149,22 +152,25 @@ XACCEL_REDIRECT_PREFIX=/internal-firmware/
 CORS_ORIGINS=
 ```
 
-### 第五步：建库 + 建管理员
+### 建库 + 建管理员（首次部署）
 
 ```bash
-node dist/src/db/migrate.js          # 建表
+cd backend
+node dist/src/db/migrate.js          # 建表（启动时也会自动 migrate）
 node dist/scripts/create-admin.js    # 交互式建管理员
 ```
 
-### 第六步：启动后端
+### 启动后端
+
+> 用 `./install.sh --systemd` 或 `./install.sh --pm2` 已经帮你做完了。下方仅作参考。
 
 **手动验证**：
 ```bash
-node dist/src/index.js
+cd backend && node dist/src/index.js
 # 看到 "Server listening on http://127.0.0.1:3001" 即成功
 ```
 
-**生产用 systemd**：
+**systemd 模板**（`install.sh --systemd` 自动生成等价文件）：
 ```ini
 # /etc/systemd/system/releasehub.service
 [Unit]
@@ -199,7 +205,7 @@ systemctl status releasehub
 | 参数 | （留空） |
 | 环境变量 | （留空，由 `.env` 自动加载） |
 
-### 第七步：配 Nginx
+### 配 Nginx
 
 参考 [`deploy/nginx.example.conf`](deploy/nginx.example.conf)，三处必改：
 
@@ -292,7 +298,7 @@ SQLite WAL 模式下热备份安全，可加 cron 每日执行。
 |---|---|
 | 运行内存 | 60–80 MB |
 | 启动时间 | < 1s |
-| 安装空间（含 node_modules） | ~120 MB |
+| 安装空间（含 node_modules，install.sh 装完） | ~120 MB |
 
 可在 1 GB 内存 / 128 MB 余量的小服务器流畅运行。
 

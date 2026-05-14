@@ -36,10 +36,6 @@ jobs:
         working-directory: backend
         run: npm run build
 
-      - name: Prune backend to production deps (含 native 二进制)
-        working-directory: backend
-        run: npm prune --omit=dev
-
       # ---------- Frontend ----------
       - name: Install frontend deps
         working-directory: frontend
@@ -67,10 +63,10 @@ jobs:
           RELEASE_DIR=release
           mkdir -p "$RELEASE_DIR/backend" "$RELEASE_DIR/public"
 
-          # backend：编译产物 + 生产依赖 + 运行清单 + 环境模板
-          # node_modules 一并打包，服务器无需再 npm ci
+          # backend：仅编译产物 + 清单 + 环境模板
+          # **不**打包 node_modules —— 由 install.sh 在目标服务器执行 npm ci --omit=dev，
+          # 避免不同发行版/glibc/架构下原生模块（better-sqlite3、argon2）不兼容
           cp -r backend/dist                "$RELEASE_DIR/backend/dist"
-          cp -r backend/node_modules        "$RELEASE_DIR/backend/node_modules"
           cp    backend/package.json        "$RELEASE_DIR/backend/package.json"
           cp    backend/package-lock.json   "$RELEASE_DIR/backend/package-lock.json"
           cp    backend/.env.example        "$RELEASE_DIR/backend/.env.example"
@@ -89,7 +85,9 @@ jobs:
           find "$RELEASE_DIR/public/assets" -type f | wc -l
           du -sh "$RELEASE_DIR/public"
 
-          # 部署辅助文件
+          # 部署辅助：一键安装脚本 + Nginx 示例 + 文档
+          cp deploy/install.sh "$RELEASE_DIR/install.sh"
+          chmod +x "$RELEASE_DIR/install.sh"
           [ -f deploy/nginx.example.conf ] && cp deploy/nginx.example.conf "$RELEASE_DIR/" || true
           [ -f README.md ]   && cp README.md   "$RELEASE_DIR/" || true
           [ -f LICENSE ]     && cp LICENSE     "$RELEASE_DIR/" || true
@@ -120,17 +118,23 @@ jobs:
             ${{ github.event.head_commit.message }}
 
             ---
-            ### 📦 部署速记（已含 node_modules，免编译）
+            ### 📦 一键安装部署
+
             ```bash
             tar xzf releasehub-${{ github.ref_name }}.tar.gz
-            cd release/backend
-            cp .env.example .env && vim .env   # 生成 SESSION_SECRET: openssl rand -hex 32
-            node dist/src/index.js             # 直接启动，无需 npm ci
-            ```
-            将 `release/public/` 配为 Nginx `root`，`release/backend/` 作为后端服务。
+            cd release
+            chmod +x install.sh
 
-            > ⚠️ 运行环境要求：**Linux x64 + Node 24.x**（与构建环境一致）。
-            > 若服务器是其他架构/glibc 不兼容，请用源码自行 `npm ci && npm run build`。
+            ./install.sh                 # 安装后端生产依赖 + 生成 .env
+            ./install.sh --systemd       # 安装并写入 systemd 服务（需 sudo）
+            ./install.sh --pm2           # 安装并用 pm2 启动
+            ./install.sh --start         # 前台启动（调试用）
+            ```
+
+            脚本会执行 `npm ci --omit=dev` 在目标机器上现场装依赖（含 better-sqlite3 / argon2 等原生模块），
+            自动生成随机 `SESSION_SECRET`。Nginx 把 root 指向 `release/public/`，参考同目录 `nginx.example.conf`。
+
+            > 要求：**Node 20+（推荐 24.x）+ Linux/macOS**。原生依赖在目标机现编，跨发行版/架构无碍。
           files: |
             releasehub-${{ steps.pkg.outputs.name }}.tar.gz
             releasehub-${{ steps.pkg.outputs.name }}.zip
