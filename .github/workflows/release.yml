@@ -45,9 +45,19 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      # ---------- Package（仅 tag 触发） ----------
+      # ---------- Package（任何 push 都产出部署包） ----------
+      - name: Compute package name
+        id: pkg
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            NAME="${GITHUB_REF_NAME}"
+          else
+            NAME="${GITHUB_REF_NAME//\//-}-$(date +%Y%m%d)-${GITHUB_SHA::7}"
+          fi
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "package name: $NAME"
+
       - name: Assemble release directory
-        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           set -e
           RELEASE_DIR=release
@@ -68,16 +78,15 @@ jobs:
           [ -f LICENSE ]     && cp LICENSE     "$RELEASE_DIR/" || true
 
           # 打包
-          TAG=${GITHUB_REF_NAME}
-          tar -czf "releasehub-${TAG}.tar.gz" -C . release
-          (cd release && zip -qr "../releasehub-${TAG}.zip" .)
+          PKG="releasehub-${{ steps.pkg.outputs.name }}"
+          tar -czf "${PKG}.tar.gz" -C . release
+          (cd release && zip -qr "../${PKG}.zip" .)
           ls -lah releasehub-*
 
       - name: Upload build artifact
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
-          name: releasehub-${{ github.ref_name }}
+          name: releasehub-${{ steps.pkg.outputs.name }}
           path: |
             releasehub-*.tar.gz
             releasehub-*.zip
@@ -104,7 +113,7 @@ jobs:
             ```
             将 `release/public/` 配为 Nginx `root`，`release/backend/` 部署为后端服务即可。
           files: |
-            releasehub-${{ github.ref_name }}.tar.gz
-            releasehub-${{ github.ref_name }}.zip
+            releasehub-${{ steps.pkg.outputs.name }}.tar.gz
+            releasehub-${{ steps.pkg.outputs.name }}.zip
           draft: false
           prerelease: false
