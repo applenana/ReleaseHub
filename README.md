@@ -4,7 +4,7 @@
 
 **轻量级固件 / 软件发布分发平台**
 
-支持无限层级分类 · Markdown 更新日志 · API 自动上传 · 内容寻址去重
+无限层级分类 · Markdown 更新日志 · API 自动上传 · 内容寻址去重
 
 [![Node](https://img.shields.io/badge/Node.js-%E2%89%A520-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Vue 3](https://img.shields.io/badge/Vue-3.5-42b883?logo=vue.js&logoColor=white)](https://vuejs.org/)
@@ -18,174 +18,224 @@
 
 ## ✨ 特性
 
-- 🌳 **无限层级分类** — 物化路径森林结构，支持任意深度（`3.2寸 / 双光融合 / 海曼5.0 / 热成像`）
-- 🎯 **智能分类筛选** — 同子树内祖先-后代自动互斥，兄弟节点共存
-- ⚡ **实时筛选** — 关键字 300ms 防抖，分类/通道/标签即时生效
+- 🌳 **无限层级分类** — 物化路径森林结构，任意深度
+- 🎯 **智能筛选** — 同子树祖先-后代自动互斥；关键字 300ms 防抖实时刷新
 - 🏷️ **多维元数据** — 分类多选 + 通道互斥 + 标签多对多
-- 📝 **Markdown 更新日志** — `md-editor-v3` 编辑预览一体
-- 🔐 **双重鉴权** — Web 端 Session + API Bearer Token
-- 📦 **内容寻址存储** — SHA-256 自动去重，相同文件零冗余
-- 🚀 **Nginx X-Accel-Redirect** — 大文件下载交给 Nginx sendfile，Node 零负担
-- 💎 **现代 UI** — 蓝绿渐变 + 毛玻璃 + 动画过渡，前后台风格统一
-- 🪶 **极致轻量** — 运行内存 ~80MB，可跑在 128MB 余量的小服务器
+- 📝 **Markdown 更新日志** — 编辑预览一体
+- 🔐 **双重鉴权** — Web Session + API Bearer Token
+- 📦 **内容寻址存储** — SHA-256 自动去重
+- 🚀 **Nginx X-Accel-Redirect** — 大文件下载由 Nginx sendfile，Node 零负担
+- 💎 **蓝绿渐变 + 毛玻璃 UI**
+- 🪶 **极致轻量** — 运行内存 ~80MB
 
 ## 🏗️ 技术栈
 
 | 层 | 技术 |
 |---|---|
 | **后端** | Node.js · Fastify 4 · TypeScript · better-sqlite3 · Argon2 |
-| **前端** | Vue 3 · Vite · Pinia · Vue Router · Naive UI · md-editor-v3 |
-| **存储** | SQLite (WAL) + 文件系统（SHA-256 内容寻址） |
-| **传输** | Nginx + X-Accel-Redirect |
+| **前端** | Vue 3 · Vite · Pinia · Naive UI · md-editor-v3 |
+| **存储** | SQLite (WAL) + 文件系统 |
+| **代理** | Nginx + X-Accel-Redirect |
 
-## 📂 目录结构
+## 🔌 端口约定
 
-```
-ReleaseHub/
-├── backend/              Fastify 后端
-│   ├── src/              TS 源码
-│   ├── scripts/          管理脚本（建管理员、种子数据）
-│   └── package.json
-├── frontend/             Vue 3 前端
-│   ├── src/
-│   └── package.json
-├── deploy/
-│   └── nginx.example.conf
-├── scripts/
-│   └── upload.mjs        API 上传示例
-└── .github/workflows/    GitHub Actions
-```
+| 端口 | 用途 | 暴露范围 |
+|---|---|---|
+| **3001** | 后端 Fastify | 仅 `127.0.0.1`，由 Nginx 反代 |
+| **5173** | 前端 Vite 开发服 | 仅本地开发用 |
+| **80 / 443** | Nginx | 对外服务端口 |
 
-## 🛠️ 开发环境
+**生产环境用户只访问 80/443**。后端 3001 不应直接对外开放。
 
-### 前置要求
+## 🛠️ 本地开发
 
-- Node.js ≥ 20
-- npm
-
-### 启动
+需要 Node.js ≥ 20、npm。
 
 ```bash
-# 1. 后端
+# === 后端 ===
 cd backend
 npm install
 cp .env.example .env
-# ⚠️ 必改：SESSION_SECRET
-#   生成命令：node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-npm run migrate            # 建表
-npm run create-admin       # 交互式创建管理员
-npm run dev                # http://localhost:3001
+# 生成 SESSION_SECRET 并填入 .env：
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
-# 2. 前端（新开终端）
+npm run migrate            # 建表
+npm run create-admin       # 交互式建管理员
+npm run dev                # 监听 127.0.0.1:3001
+
+# === 前端（新开终端） ===
 cd frontend
 npm install
-npm run dev                # http://localhost:5173
+npm run dev                # 监听 http://localhost:5173
 ```
 
+访问：
 - 前台：<http://localhost:5173>
 - 后台：<http://localhost:5173/admin>
-- API 文档（Swagger）：<http://localhost:3001/api/docs>
+- API 文档：<http://localhost:3001/api/docs>
 
-## 🚢 部署
+## 🚢 生产部署
 
-### 方式 A：GitHub Release（推荐）
+### 第一步：拿到构建产物
 
-打 tag 触发 CI 自动构建并发布 release：
+**方式 A**：从 [Releases](../../releases) 页下载 `releasehub-vX.Y.Z.tar.gz` 解压。
 
+**方式 B**：本地自行构建：
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+cd backend && npm install && npm run build
+cd ../frontend && npm install && npm run build
 ```
 
-CI 会在 [Releases](../../releases) 页面产出 `releasehub-v1.0.0.tar.gz`，包含：
+部署需要的文件：
+- `backend/dist/`
+- `backend/package.json`
+- `backend/package-lock.json`
+- `backend/.env.example`
+- `frontend/dist/` 的**内容**（不含 dist 目录本身）
+
+### 第二步：服务器目录结构
 
 ```
-release/
-├── backend/        # 已编译产物 + package.json
-└── public/         # 已编译前端静态资源
-```
-
-下载、解压、配置、启动：
-
-```bash
-tar xzf releasehub-v1.0.0.tar.gz -C /your-path/release.applenana.fun
-cd /your-path/release.applenana.fun/backend
-cp .env.example .env && vim .env       # 改 SESSION_SECRET 等
-npm ci --omit=dev                      # 装运行时依赖
-node dist/src/index.js                 # 启动（建议交给 systemd）
-```
-
-### 方式 B：手动构建
-
-```bash
-# 本地
-cd backend && npm run build
-cd ../frontend && npm run build
-
-# 服务器需要的文件
-# backend/dist + backend/package.json + backend/package-lock.json + backend/.env
-# frontend/dist 的全部内容（不含 dist 本身）
-```
-
-### 服务器目录建议
-
-```
-release.applenana.fun/
+/www/wwwroot/releaseHub/
 ├── backend/
-│   ├── dist/                 (复制)
-│   ├── package.json          (复制)
-│   ├── package-lock.json     (复制)
-│   ├── .env                  (从 .env.example 改)
-│   ├── node_modules/         (npm ci 自动生成)
-│   ├── data/                 (首次启动自动建)
-│   └── storage/              (首次启动自动建)
-└── public/                   (放 frontend/dist 内容，Nginx 静态根)
+│   ├── dist/                 ← 复制
+│   ├── package.json          ← 复制
+│   ├── package-lock.json     ← 复制
+│   ├── .env                  ← 从 .env.example 改
+│   ├── node_modules/         ← npm ci 自动生成
+│   ├── data/                 ← 首次启动自动建（SQLite 数据库）
+│   └── storage/              ← 首次启动自动建（固件文件）
+└── public/                   ← Nginx 静态根，放 frontend/dist 内容
 ```
 
-### Nginx 配置
+### 第三步：装运行依赖
 
-参考 [`deploy/nginx.example.conf`](deploy/nginx.example.conf)，三处必改：
+服务器需要：**Node.js ≥ 20**、`gcc`/`make`/`python3`（编译 `better-sqlite3` 和 `argon2` 原生模块）。
 
-```nginx
-server_name your-domain.com;
-root /path/to/release.applenana.fun/public;
-
-location /internal-firmware/ {
-    internal;
-    alias /path/to/release.applenana.fun/backend/storage/firmware/;
-}
+```bash
+cd /www/wwwroot/releaseHub/backend
+npm ci --omit=dev          # 只装生产依赖
 ```
 
-`location /api/` 反代到 `127.0.0.1:3001`，无需调整。
+### 第四步：配 `.env`
 
-### systemd（推荐）
+```bash
+cp .env.example .env
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# 复制 64 位 hex
+vim .env
+```
 
+**生产配置范例**：
 ```ini
+PORT=3001
+HOST=127.0.0.1
+DATABASE_PATH=./data/releasehub.db
+FIRMWARE_STORAGE_DIR=./storage/firmware
+
+SESSION_SECRET=刚才生成的64位hex      # 必改
+
+COOKIE_SECURE=true                   # HTTPS 站点必须 true
+MAX_UPLOAD_BYTES=104857600           # 100MB，按需调
+
+# Nginx X-Accel 直传（要在 Nginx 配 internal location 后才能用）
+XACCEL_REDIRECT_PREFIX=/internal-firmware/
+
+# CORS（同域部署可留空；跨域填前端实际地址）
+CORS_ORIGINS=
+```
+
+### 第五步：建库 + 建管理员
+
+```bash
+node dist/src/db/migrate.js          # 建表
+node dist/scripts/create-admin.js    # 交互式建管理员
+```
+
+### 第六步：启动后端
+
+**手动验证**：
+```bash
+node dist/src/index.js
+# 看到 "Server listening on http://127.0.0.1:3001" 即成功
+```
+
+**生产用 systemd**：
+```ini
+# /etc/systemd/system/releasehub.service
 [Unit]
 Description=ReleaseHub
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/path/to/release.applenana.fun/backend
+WorkingDirectory=/www/wwwroot/releaseHub/backend
 ExecStart=/usr/bin/node dist/src/index.js
 Restart=on-failure
-MemoryMax=200M
+MemoryMax=256M
+User=root
 
 [Install]
 WantedBy=multi-user.target
 ```
-
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now releasehub
+systemctl daemon-reload
+systemctl enable --now releasehub
+systemctl status releasehub
 ```
+
+**或宝塔面板「Node 项目 → 传统项目」**：
+
+| 字段 | 值 |
+|---|---|
+| 项目名称 | `releasehub` |
+| Node 版本 | ≥ v20 |
+| 启动文件 | `/www/wwwroot/releaseHub/backend/dist/src/index.js` |
+| 运行目录 | `/www/wwwroot/releaseHub/backend` |
+| 参数 | （留空） |
+| 环境变量 | （留空，由 `.env` 自动加载） |
+
+### 第七步：配 Nginx
+
+参考 [`deploy/nginx.example.conf`](deploy/nginx.example.conf)，三处必改：
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    root /www/wwwroot/releaseHub/public;
+    index index.html;
+
+    # 前端 SPA
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API 反代到后端
+    location /api/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 100M;       # 与 MAX_UPLOAD_BYTES 一致
+    }
+
+    # 固件下载 X-Accel-Redirect 内部转发
+    location /internal-firmware/ {
+        internal;
+        alias /www/wwwroot/releaseHub/backend/storage/firmware/;
+    }
+}
+```
+
+`systemctl reload nginx` 后即可对外访问。
 
 ## 🔑 API 用法
 
 ### 创建 Token
 
-后台 → **API 令牌** → 新建。**Token 仅创建时显示一次明文**，请立即保存。
+后台 → **API 令牌** → 新建。**明文仅在创建时显示一次**，请立即保存。
 
 ### 上传固件
 
@@ -199,12 +249,11 @@ curl -X POST https://your-domain.com/api/v1/firmwares \
     "channel_key": "stable",
     "category_ids": [3, 5],
     "tag_names": ["推荐"],
-    "changelog": "## 1.2.3\n- 修复 X 问题"
+    "changelog": "## 1.2.3\n- 修复 X"
   }'
 ```
 
-或使用 [`scripts/upload.mjs`](scripts/upload.mjs)：
-
+也可用脚本：[`scripts/upload.mjs`](scripts/upload.mjs)
 ```bash
 API_URL=https://your-domain.com API_TOKEN=rh_xxx \
   node scripts/upload.mjs ./firmware.bin
@@ -213,46 +262,35 @@ API_URL=https://your-domain.com API_TOKEN=rh_xxx \
 ## 🗄️ 数据模型
 
 ```
-Category    ─── 森林 + 物化路径，支持无限层级
-Channel     ─── 互斥单选（稳定 / 快速 / Beta）
-Tag         ─── 多对多扁平标签
-Firmware    ─── title + version + channel + sha256 + changelog
-AdminUser   ─── Argon2 哈希密码
-ApiToken    ─── Bearer Token（哈希存储）
+Category    森林 + 物化路径，支持无限层级
+Channel     互斥单选（稳定 / 快速 / Beta）
+Tag         多对多扁平标签
+Firmware    title + version + channel + sha256 + changelog
+AdminUser   Argon2 哈希密码
+ApiToken    Bearer Token（哈希存储）
 ```
 
-文件以 `<storage>/<sha[0:2]>/<sha>` 路径保存，相同 SHA 的文件全网仅存一份。
+文件以 `<storage>/<sha[0:2]>/<sha>` 路径保存，相同 SHA 全网仅存一份。
 
 ## 💾 备份
 
 只需备份两个目录：
 
 ```bash
-tar czf releasehub-backup-$(date +%F).tgz \
-    backend/data/ \
-    backend/storage/
+tar czf releasehub-backup-$(date +%F).tgz backend/data/ backend/storage/
 ```
 
-建议加 cron 每日执行。SQLite WAL 模式下热备份是安全的。
+SQLite WAL 模式下热备份安全，可加 cron 每日执行。
 
 ## 🧮 资源占用
 
 | 资源 | 占用 |
 |---|---|
-| 运行时内存（Node） | 60–80 MB |
+| 运行内存 | 60–80 MB |
 | 启动时间 | < 1s |
 | 安装空间（含 node_modules） | ~120 MB |
 
-可在 1GB 总内存 / 128MB 余量的小服务器流畅运行。
-
-## 🤝 贡献
-
-欢迎 issue 与 PR！开发约定：
-
-- TypeScript strict 模式
-- 后端：Fastify + better-sqlite3，无 ORM
-- 前端：组合式 API + `<script setup>`
-- Commit 信息推荐遵循 Conventional Commits
+可在 1 GB 内存 / 128 MB 余量的小服务器流畅运行。
 
 ## 📄 License
 
@@ -262,6 +300,6 @@ tar czf releasehub-backup-$(date +%F).tgz \
 
 <div align="center">
 
-如果这个项目对你有帮助，欢迎点一个 ⭐
+如果这个项目对你有帮助，欢迎点 ⭐
 
 </div>
