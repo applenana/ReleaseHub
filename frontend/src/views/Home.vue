@@ -30,6 +30,7 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = ref(20);
 const loading = ref(false);
+const availableTagIds = ref<Set<number>>(new Set());
 
 const categoryMap = computed(() => {
   const m = new Map<number, Category>();
@@ -114,6 +115,9 @@ async function loadFirmwares() {
     if (my !== reqSeq) return; // 丢弃过期请求
     firmwares.value = r.items;
     total.value = r.total;
+    if (r.facets?.tag_ids) {
+      availableTagIds.value = new Set(r.facets.tag_ids);
+    }
   } finally {
     if (my === reqSeq) loading.value = false;
   }
@@ -266,7 +270,10 @@ onMounted(async () => {
               v-for="t in tags"
               :key="t.id"
               class="rh-chip"
-              :class="{ active: selectedTagIds.includes(t.id) }"
+              :class="{
+                active: selectedTagIds.includes(t.id),
+                disabled: !availableTagIds.has(t.id) && !selectedTagIds.includes(t.id),
+              }"
               :style="selectedTagIds.includes(t.id) ? { background: t.color, borderColor: t.color, color: '#fff' } : {}"
             >
               <input
@@ -588,6 +595,11 @@ onMounted(async () => {
 }
 .rh-chip:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06); }
 .rh-chip.active { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15); }
+.rh-chip.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+  filter: grayscale(0.6);
+}
 .rh-chip-dot {
   width: 8px;
   height: 8px;

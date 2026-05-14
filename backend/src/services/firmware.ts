@@ -110,26 +110,37 @@ export function listFirmwares(f: ListFirmwareFilter): {
   items: FirmwareDetail[];
   page: number;
   pageSize: number;
+  facets: {
+    /** 在“不考虑当前 tag 过滤”的前提下，匹配集合里出现过的 tag id */
+    tag_ids: number[];
+    /** 在“不考虑当前 channel 过滤”的前提下，匹配集合里出现过的 channel id */
+    channel_ids: number[];
+    /** 在“不考虑当前 category 过滤”的前提下，匹配集合里出现过的 category id（含祖先链） */
+    category_ids: number[];
+  };
 } {
   const page = Math.max(1, f.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, f.pageSize ?? 20));
-  const where: string[] = [];
-  const params: any[] = [];
 
-  if (!f.includeYanked) where.push('f.is_yanked = 0');
-
-  if (f.channelIds && f.channelIds.length) {
-    where.push(`f.channel_id IN (${f.channelIds.map(() => '?').join(',')})`);
-    params.push(...f.channelIds);
-  }
-
+  // 各维度的 where 子句独立存放，便于做 facet（"排除自身维度"）查询
+  const baseWhere: string[] = [];
+  const baseParams: any[] = [];
+  if (!f.includeYanked) baseWhere.push('f.is_yanked = 0');
   if (f.keyword) {
-    where.push(`(f.title LIKE ? OR f.version LIKE ? OR f.original_filename LIKE ?)`);
+    baseWhere.push(`(f.title LIKE ? OR f.version LIKE ? OR f.original_filename LIKE ?)`);
     const kw = `%${f.keyword}%`;
-    params.push(kw, kw, kw);
+    baseParams.push(kw, kw, kw);
   }
 
-  // 分类筛选：每个选中的 category，找出其所有后代节点 id，要求 firmware 至少（OR 模式）/全部（AND 模式）命中
+  const channelWhere: string[] = [];
+  const channelParams: any[] = [];
+  if (f.channelIds && f.channelIds.length) {
+    channelWhere.push(`f.channel_id IN (${f.channelIds.map(() => '?').join(',')})`);
+    channelParams.push(...f.channelIds);
+  }
+
+  const categoryWhere: string[] = [];
+  const categoryParams: any[] = [];
   if (f.categoryIds && f.categoryIds.length) {
     const groups: number[][] = [];
     for (const cid of f.categoryIds) {
@@ -143,47 +154,114 @@ export function listFirmwares(f: ListFirmwareFilter): {
     if (groups.length) {
       if (f.categoryMatchAll) {
         for (const g of groups) {
-          where.push(
+          categoryWhere.push(
             `EXISTS (SELECT 1 FROM firmware_categories fc WHERE fc.firmware_id = f.id AND fc.category_id IN (${g.map(() => '?').join(',')}))`,
           );
-          params.push(...g);
+          categoryParams.push(...g);
         }
       } else {
         const all = groups.flat();
-        where.push(
+        categoryWhere.push(
           `EXISTS (SELECT 1 FROM firmware_categories fc WHERE fc.firmware_id = f.id AND fc.category_id IN (${all.map(() => '?').join(',')}))`,
         );
-        params.push(...all);
+        categoryParams.push(...all);
       }
     }
   }
 
+  const tagWhere: string[] = [];
+  const tagParams: any[] = [];
   if (f.tagIds && f.tagIds.length) {
     if (f.tagMatchAll) {
       for (const tid of f.tagIds) {
-        where.push(
+        tagWhere.push(
           `EXISTS (SELECT 1 FROM firmware_tags ft WHERE ft.firmware_id = f.id AND ft.tag_id = ?)`,
         );
-        params.push(tid);
+        tagParams.push(tid);
       }
     } else {
-      where.push(
+      tagWhere.push(
         `EXISTS (SELECT 1 FROM firmware_tags ft WHERE ft.firmware_id = f.id AND ft.tag_id IN (${f.tagIds.map(() => '?').join(',')}))`,
       );
-      params.push(...f.tagIds);
+      tagParams.push(...f.tagIds);
     }
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const total = (db.prepare(`SELECT COUNT(*) AS n FROM firmwares f ${whereSql}`).get(...params) as {
+  // 主查询：所有 where 都生效
+  const allWhere = [...baseWhere, ...channelWhere, ...categoryWhere, ...tagWhere];
+  const allParams = [...baseParams, ...channelParams, ...categoryParams, ...tagParams];
+  const whereSql = allWhere.length ? `WHERE ${allWhere.join(' AND ')}` : '';
+  const total = (db.prepare(`SELECT COUNT(*) AS n FROM firmwares f ${whereSql}`).get(...allParams) as {
     n: number;
   }).n;
   const rows = db
     .prepare(
       `${baseSelect} ${whereSql} ORDER BY f.uploaded_at DESC, f.id DESC LIMIT ? OFFSET ?`,
     )
-    .all(...params, pageSize, (page - 1) * pageSize) as any[];
-  return { total, items: attachRelations(rows), page, pageSize };
+    .all(...allParams, pageSize, (page - 1) * pageSize) as any[];
+
+  // Facet 查询：排除"自身维度"的 where，便于 UI 显示"还可用的其他选项"
+  function facetIds(table: 'firmware_tags' | 'firmware_categories', col: 'tag_id' | 'category_id', skip: 'tag' | 'channel' | 'category'): number[] {
+    const parts = [...baseWhere];
+    const params = [...baseParams];
+    if (skip !== 'channel') {
+      parts.push(...channelWhere);
+      params.push(...channelParams);
+    }
+    if (skip !== 'category') {
+      parts.push(...categoryWhere);
+      params.push(...categoryParams);
+    }
+    if (skip !== 'tag') {
+      parts.push(...tagWhere);
+      params.push(...tagParams);
+    }
+    const w = parts.length ? `WHERE ${parts.join(' AND ')}` : '';
+    const rows = db
+      .prepare(
+        `SELECT DISTINCT x.${col} AS id FROM ${table} x WHERE x.firmware_id IN (SELECT f.id FROM firmwares f ${w})`,
+      )
+      .all(...params) as { id: number }[];
+    return rows.map((r) => r.id);
+  }
+
+  function facetChannelIds(): number[] {
+    const parts = [...baseWhere];
+    const params = [...baseParams];
+    // 排除 channel 自身
+    parts.push(...categoryWhere, ...tagWhere);
+    params.push(...categoryParams, ...tagParams);
+    const w = parts.length ? `WHERE ${parts.join(' AND ')}` : '';
+    const rows = db
+      .prepare(`SELECT DISTINCT f.channel_id AS id FROM firmwares f ${w}`)
+      .all(...params) as { id: number }[];
+    return rows.map((r) => r.id);
+  }
+
+  // category facet 含祖先链：用户点击一个 leaf，希望仍然能看到祖先节点
+  const categoryFacetLeafs = facetIds('firmware_categories', 'category_id', 'category');
+  const categoryFacetSet = new Set<number>(categoryFacetLeafs);
+  if (categoryFacetLeafs.length) {
+    const placeholders = categoryFacetLeafs.map(() => '?').join(',');
+    const paths = db
+      .prepare(`SELECT path FROM categories WHERE id IN (${placeholders})`)
+      .all(...categoryFacetLeafs) as { path: string }[];
+    for (const p of paths) {
+      for (const s of p.path.split('/').filter(Boolean)) categoryFacetSet.add(Number(s));
+    }
+  }
+
+  return {
+    total,
+    items: attachRelations(rows),
+    page,
+    pageSize,
+    facets: {
+      tag_ids: facetIds('firmware_tags', 'tag_id', 'tag'),
+      channel_ids: facetChannelIds(),
+      category_ids: [...categoryFacetSet],
+    },
+  };
 }
 
 export interface CreateFirmwareInput {

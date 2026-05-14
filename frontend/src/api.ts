@@ -57,6 +57,11 @@ export interface FirmwareListResp {
   items: Firmware[];
   page: number;
   pageSize: number;
+  facets?: {
+    tag_ids: number[];
+    channel_ids: number[];
+    category_ids: number[];
+  };
 }
 
 export const Apis = {
