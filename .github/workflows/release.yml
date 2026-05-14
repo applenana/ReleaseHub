@@ -76,7 +76,18 @@ jobs:
           cp    backend/.env.example        "$RELEASE_DIR/backend/.env.example"
 
           # frontend：静态资源（Nginx 直接吃）
-          cp -r frontend/dist/. "$RELEASE_DIR/public/"
+          # 用 tar pipe 保证 assets/ 下所有文件（含 hash 命名的 .js / .css）都进 public/
+          if [ ! -d frontend/dist ]; then
+            echo "::error::frontend/dist 不存在，构建失败"; exit 1
+          fi
+          ( cd frontend/dist && tar cf - . ) | ( cd "$RELEASE_DIR/public" && tar xf - )
+
+          # 诊断：列出 public/ 与 public/assets/ 内容，确认 chunk 都到位
+          echo "===== public/ 顶层 ====="
+          ls -la "$RELEASE_DIR/public"
+          echo "===== public/assets/ 文件数 ====="
+          find "$RELEASE_DIR/public/assets" -type f | wc -l
+          du -sh "$RELEASE_DIR/public"
 
           # 部署辅助文件
           [ -f deploy/nginx.example.conf ] && cp deploy/nginx.example.conf "$RELEASE_DIR/" || true
