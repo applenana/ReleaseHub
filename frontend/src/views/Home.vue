@@ -543,6 +543,7 @@ onMounted(async () => {
 
 .rh-search {
   width: 100%;
+  box-sizing: border-box;
   padding: 10px 14px;
   border-radius: 12px;
   border: 1.5px solid rgba(59, 130, 246, 0.12);
