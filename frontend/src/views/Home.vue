@@ -304,9 +304,9 @@ onMounted(async () => {
             v-for="fw in firmwares"
             :key="fw.id"
             class="rh-card"
+            :style="{ '--channel-color': fw.channel?.color ?? '#3b82f6' }"
             @click="router.push(`/firmwares/${fw.id}`)"
           >
-            <div class="rh-card-accent" :style="{ background: fw.channel?.color ?? '#3b82f6' }" />
             <div class="rh-card-row">
               <div class="rh-card-main">
                 <div class="rh-card-title">
@@ -675,8 +675,9 @@ onMounted(async () => {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.9);
+  border-left: 4px solid var(--channel-color, #3b82f6);
   border-radius: 20px;
-  padding: 20px 24px 20px 28px;
+  padding: 20px 24px 20px 24px;
   cursor: pointer;
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
@@ -696,15 +697,6 @@ onMounted(async () => {
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
 }
 .rh-card:hover::before { opacity: 1; }
-
-.rh-card-accent {
-  position: absolute;
-  left: 0;
-  top: 16px;
-  bottom: 16px;
-  width: 4px;
-  border-radius: 0 4px 4px 0;
-}
 
 .rh-card-row {
   position: relative;
