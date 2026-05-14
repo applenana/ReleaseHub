@@ -171,7 +171,12 @@ onMounted(async () => {
         </div>
         <div>
           <div class="rh-title">ReleaseHub</div>
-          <div class="rh-subtitle">热成像固件分发中心</div>
+          <div class="rh-subtitle">
+            热成像固件分发中心
+            <span class="rh-subtitle-sep">·</span>
+            <span class="rh-subtitle-count"><strong>{{ total }}</strong> 个固件</span>
+            <span v-if="loading" class="rh-loading-tag">加载中…</span>
+          </div>
         </div>
       </div>
       <div class="rh-spacer" />
@@ -285,14 +290,6 @@ onMounted(async () => {
       </aside>
 
       <main class="rh-main">
-        <div class="rh-toolbar">
-          <div class="rh-count">
-            <strong>{{ total }}</strong>
-            <span>个固件</span>
-            <span v-if="loading" class="rh-loading-tag">加载中…</span>
-          </div>
-        </div>
-
         <div v-if="!firmwares.length && !loading" class="rh-empty">
           <div class="rh-empty-icon">📦</div>
           <div class="rh-empty-title">没有匹配的固件</div>
@@ -619,31 +616,23 @@ onMounted(async () => {
   transform: translateY(-1px);
 }
 
-/* 工具栏 */
-.rh-toolbar {
-  display: flex;
-  align-items: center;
-  margin-bottom: 16px;
-  padding: 0 4px;
+/* hero 副标题计数 */
+.rh-subtitle-sep {
+  margin: 0 6px;
+  color: #cbd5e1;
 }
-.rh-count {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  color: #475569;
-  font-size: 14px;
-}
-.rh-count strong {
-  font-size: 22px;
+.rh-subtitle-count strong {
   font-weight: 700;
+  font-size: 14px;
   background: linear-gradient(120deg, #3b82f6, #06b6d4);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  margin-right: 2px;
 }
 .rh-loading-tag {
-  margin-left: 12px;
-  font-size: 12px;
+  margin-left: 10px;
+  font-size: 11px;
   color: #3b82f6;
   font-weight: 500;
   animation: pulse 1.4s ease-in-out infinite;
