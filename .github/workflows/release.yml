@@ -21,20 +21,24 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: |
             backend/package-lock.json
             frontend/package-lock.json
 
       # ---------- Backend ----------
-      - name: Install backend deps
+      - name: Install backend deps (含 devDeps 以便 tsc 构建)
         working-directory: backend
         run: npm ci
 
       - name: Build backend
         working-directory: backend
         run: npm run build
+
+      - name: Prune backend to production deps (含 native 二进制)
+        working-directory: backend
+        run: npm prune --omit=dev
 
       # ---------- Frontend ----------
       - name: Install frontend deps
@@ -63,8 +67,10 @@ jobs:
           RELEASE_DIR=release
           mkdir -p "$RELEASE_DIR/backend" "$RELEASE_DIR/public"
 
-          # backend：编译产物 + 运行所需清单 + 环境模板
+          # backend：编译产物 + 生产依赖 + 运行清单 + 环境模板
+          # node_modules 一并打包，服务器无需再 npm ci
           cp -r backend/dist                "$RELEASE_DIR/backend/dist"
+          cp -r backend/node_modules        "$RELEASE_DIR/backend/node_modules"
           cp    backend/package.json        "$RELEASE_DIR/backend/package.json"
           cp    backend/package-lock.json   "$RELEASE_DIR/backend/package-lock.json"
           cp    backend/.env.example        "$RELEASE_DIR/backend/.env.example"
@@ -103,15 +109,17 @@ jobs:
             ${{ github.event.head_commit.message }}
 
             ---
-            ### 📦 部署速记
+            ### 📦 部署速记（已含 node_modules，免编译）
             ```bash
             tar xzf releasehub-${{ github.ref_name }}.tar.gz
             cd release/backend
-            cp .env.example .env && vim .env   # 改 SESSION_SECRET
-            npm ci --omit=dev
-            node dist/src/index.js
+            cp .env.example .env && vim .env   # 生成 SESSION_SECRET: openssl rand -hex 32
+            node dist/src/index.js             # 直接启动，无需 npm ci
             ```
-            将 `release/public/` 配为 Nginx `root`，`release/backend/` 部署为后端服务即可。
+            将 `release/public/` 配为 Nginx `root`，`release/backend/` 作为后端服务。
+
+            > ⚠️ 运行环境要求：**Linux x64 + Node 24.x**（与构建环境一致）。
+            > 若服务器是其他架构/glibc 不兼容，请用源码自行 `npm ci && npm run build`。
           files: |
             releasehub-${{ steps.pkg.outputs.name }}.tar.gz
             releasehub-${{ steps.pkg.outputs.name }}.zip

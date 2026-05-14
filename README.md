@@ -78,44 +78,48 @@ npm run dev                # 监听 http://localhost:5173
 
 ### 第一步：拿到构建产物
 
-**方式 A**：从 [Releases](../../releases) 页下载 `releasehub-vX.Y.Z.tar.gz` 解压。
+**方式 A（推荐，零编译）**：从 [Releases](../../releases) 页下载 `releasehub-vX.Y.Z.tar.gz` 解压即用。
 
-**方式 B**：本地自行构建：
+包内已含：
+- `release/backend/dist/` — 编译后的 JS
+- `release/backend/node_modules/` — **生产依赖已装好（含 better-sqlite3、argon2 原生二进制）**
+- `release/backend/.env.example`
+- `release/public/` — 前端静态资源
+
+> ⚠️ 运行环境要求：**Linux x64 + Node 24.x**（与 GitHub Actions 构建环境一致）。
+> 若架构/glibc 不兼容，请改用方式 B 自行编译。
+
+**方式 B（源码自构建）**：
 ```bash
-cd backend && npm install && npm run build
-cd ../frontend && npm install && npm run build
+cd backend && npm ci && npm run build && npm prune --omit=dev
+cd ../frontend && npm ci && npm run build
 ```
-
-部署需要的文件：
-- `backend/dist/`
-- `backend/package.json`
-- `backend/package-lock.json`
-- `backend/.env.example`
-- `frontend/dist/` 的**内容**（不含 dist 目录本身）
 
 ### 第二步：服务器目录结构
 
 ```
 /www/wwwroot/releaseHub/
 ├── backend/
-│   ├── dist/                 ← 复制
-│   ├── package.json          ← 复制
-│   ├── package-lock.json     ← 复制
-│   ├── .env                  ← 从 .env.example 改
-│   ├── node_modules/         ← npm ci 自动生成
+│   ├── dist/                 ← 解压自带
+│   ├── node_modules/         ← 解压自带（方式 A 无需 npm ci）
+│   ├── package.json          ← 解压自带
+│   ├── package-lock.json     ← 解压自带
+│   ├── .env                  ← 从 .env.example 改（必做）
 │   ├── data/                 ← 首次启动自动建（SQLite 数据库）
 │   └── storage/              ← 首次启动自动建（固件文件）
-└── public/                   ← Nginx 静态根，放 frontend/dist 内容
+└── public/                   ← Nginx 静态根，对应 release/public/ 的内容
 ```
 
-### 第三步：装运行依赖
+### 第三步：（方式 B 才需要）装运行依赖
 
-服务器需要：**Node.js ≥ 20**、`gcc`/`make`/`python3`（编译 `better-sqlite3` 和 `argon2` 原生模块）。
+服务器需要：**Node.js 24.x**、`gcc`/`make`/`python3`（编译 `better-sqlite3` / `argon2` 原生模块）。
 
 ```bash
 cd /www/wwwroot/releaseHub/backend
-npm ci --omit=dev          # 只装生产依赖
+npm ci --omit=dev
 ```
+
+> 方式 A 跳过本步。
 
 ### 第四步：配 `.env`
 
