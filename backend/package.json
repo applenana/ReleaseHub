@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json && node -e \"require('fs').cpSync('src/db/migrations','dist/src/db/migrations',{recursive:true})\"",
     "start": "node dist/src/index.js",
     "migrate": "tsx src/db/migrate.ts",
-    "create-admin": "tsx scripts/create-admin.ts"
+    "create-admin": "tsx scripts/create-admin.ts",
+    "seed-bulk": "tsx scripts/seed-bulk.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^9.3.1",
